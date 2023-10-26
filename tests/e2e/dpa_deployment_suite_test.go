@@ -12,7 +12,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	. "github.com/onsi/ginkgo/v2"
-	"github.com/onsi/ginkgo/v2/types"
 	. "github.com/onsi/gomega"
 	oadpv1alpha1 "github.com/openshift/oadp-operator/api/v1alpha1"
 	. "github.com/openshift/oadp-operator/tests/e2e/lib"
@@ -20,6 +19,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/utils/pointer"
 )
+
+// TODO change all fmt.Print and log.Print to GinkgoWriter.Println
 
 var _ = Describe("Configuration testing for DPA Custom Resource", func() {
 	providerFromDPA := Dpa.Spec.BackupLocations[0].Velero.Provider
@@ -40,7 +41,8 @@ var _ = Describe("Configuration testing for DPA Custom Resource", func() {
 		WantError          bool
 	}
 
-	genericTests := []TableEntry{
+	// TODO add inside DescribeTable
+	tests := []TableEntry{
 		Entry("Default velero CR", InstallCase{
 			Name:         "default-cr",
 			BRestoreType: RESTIC,
@@ -465,10 +467,7 @@ var _ = Describe("Configuration testing for DPA Custom Resource", func() {
 			},
 			WantError: false,
 		}, nil),
-	}
-
-	awsTests := []TableEntry{
-		Entry("AWS Without Region No S3ForcePathStyle with BackupImages false should succeed", Label("aws"), InstallCase{
+		Entry("AWS Without Region No S3ForcePathStyle with BackupImages false should succeed", Label("aws", "ibmcloud"), InstallCase{
 			Name:         "default-no-region-no-s3forcepathstyle",
 			BRestoreType: RESTIC,
 			DpaSpec: &oadpv1alpha1.DataProtectionApplicationSpec{
@@ -500,7 +499,7 @@ var _ = Describe("Configuration testing for DPA Custom Resource", func() {
 			},
 			WantError: false,
 		}, nil),
-		Entry("AWS With Region And S3ForcePathStyle should succeed", Label("aws"), InstallCase{
+		Entry("AWS With Region And S3ForcePathStyle should succeed", Label("aws", "ibmcloud"), InstallCase{
 			Name:         "default-with-region-and-s3forcepathstyle",
 			BRestoreType: RESTIC,
 			DpaSpec: &oadpv1alpha1.DataProtectionApplicationSpec{
@@ -536,7 +535,7 @@ var _ = Describe("Configuration testing for DPA Custom Resource", func() {
 			},
 			WantError: false,
 		}, nil),
-		Entry("AWS Without Region And S3ForcePathStyle true should fail", Label("aws"), InstallCase{
+		Entry("AWS Without Region And S3ForcePathStyle true should fail", Label("aws", "ibmcloud"), InstallCase{
 			Name:         "default-with-region-and-s3forcepathstyle",
 			BRestoreType: RESTIC,
 			DpaSpec: &oadpv1alpha1.DataProtectionApplicationSpec{
@@ -571,15 +570,11 @@ var _ = Describe("Configuration testing for DPA Custom Resource", func() {
 			WantError: true,
 		}, fmt.Errorf("region for AWS backupstoragelocation cannot be empty when s3ForcePathStyle is true or when backing up images")),
 	}
-	genericTests = append(genericTests, awsTests...)
 
 	var lastInstallingApplicationNamespace string
 	var lastInstallTime time.Time
-	var _ = ReportAfterEach(func(report SpecReport) {
-		if report.State == types.SpecStateSkipped || report.State == types.SpecStatePending {
-			// do not run if the test is skipped
-			return
-		}
+	var _ = AfterEach(func(ctx SpecContext) {
+		report := ctx.SpecReport()
 		if report.Failed() {
 			baseReportDir := artifact_dir + "/" + report.LeafNodeText
 			err := os.MkdirAll(baseReportDir, 0755)
@@ -598,7 +593,6 @@ var _ = Describe("Configuration testing for DPA Custom Resource", func() {
 		}
 	})
 	DescribeTable("Updating custom resource with new configuration",
-
 		func(installCase InstallCase, expectedErr error) {
 			//TODO: Calling dpaCR.build() is the old pattern.
 			//Change it later to make sure all the spec values are passed for every test case,
@@ -722,7 +716,7 @@ var _ = Describe("Configuration testing for DPA Custom Resource", func() {
 				Expect(adpLogsDiff).To(Equal(""))
 			}
 
-		}, genericTests,
+		}, tests,
 	)
 
 	type deletionCase struct {

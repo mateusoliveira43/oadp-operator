@@ -16,7 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/go-cmp/cmp"
 	volumesnapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1"
 	"github.com/onsi/ginkgo/v2"
 	ocpappsv1 "github.com/openshift/api/apps/v1"
@@ -113,14 +112,15 @@ func InstallApplicationWithRetries(ocClient client.Client, file string, retries 
 						continue
 					}
 					if !reflect.DeepEqual(clusterResource.Object[key], resource.Object[key]) {
-						fmt.Println("diff found for key:", key)
-						ginkgo.GinkgoWriter.Println(cmp.Diff(clusterResource.Object[key], resource.Object[key]))
+						// TODO only on error?
+						// ginkgo.GinkgoWriter.Println("diff found for key:", key)
+						// ginkgo.GinkgoWriter.Println(cmp.Diff(clusterResource.Object[key], resource.Object[key]))
 						needsUpdate = true
 						clusterResource.Object[key] = resource.Object[key]
 					}
 				}
 				if needsUpdate {
-					fmt.Printf("updating resource: %s; name: %s\n", resource.GroupVersionKind(), resource.GetName())
+					ginkgo.GinkgoWriter.Printf("updating resource: %s; name: %s\n", resource.GroupVersionKind(), resource.GetName())
 					err = ocClient.Update(context.Background(), &clusterResource)
 				}
 			}
@@ -240,7 +240,7 @@ func AreVolumeSnapshotsReady(ocClient client.Client, backupName string) wait.Con
 			return false, nil
 		}
 		for _, v := range vList.Items {
-			log.Println(fmt.Sprintf("waiting for volume snapshot contents %s to be ready", v.Name))
+			ginkgo.GinkgoWriter.Printf(fmt.Sprintf("waiting for volume snapshot contents %s to be ready\n", v.Name))
 			if v.Status.ReadyToUse == nil {
 				ginkgo.GinkgoWriter.Println("VolumeSnapshotContents Ready status not found for " + v.Name)
 				ginkgo.GinkgoWriter.Println(fmt.Sprintf("status: %v", v.Status))
@@ -385,8 +385,7 @@ func AreApplicationPodsRunning(namespace string) wait.ConditionFunc {
 		for _, podInfo := range podList.Items {
 			phase := podInfo.Status.Phase
 			if phase != corev1.PodRunning && phase != corev1.PodSucceeded {
-				ginkgo.GinkgoWriter.Write([]byte(fmt.Sprintf("Pod %v not yet succeeded", podInfo.Name)))
-				ginkgo.GinkgoWriter.Write([]byte(fmt.Sprintf("status: %v", podInfo.Status)))
+				ginkgo.GinkgoWriter.Write([]byte(fmt.Sprintf("Pod %v with phase %v not yet succeeded\n", podInfo.Name, phase)))
 				return false, nil
 			}
 		}
@@ -414,7 +413,6 @@ func InstalledSubscriptionCSV(ocClient client.Client, namespace, subscriptionNam
 }
 
 func PrintNamespaceEventsAfterTime(namespace string, startTime time.Time) {
-	log.Println("Printing events for namespace: ", namespace)
 	clientset, err := setUpClient()
 	if err != nil {
 		ginkgo.GinkgoWriter.Write([]byte(fmt.Sprintf("Error getting client: %v\n", err)))
@@ -467,8 +465,8 @@ func makeRequest(request string, api string, todo string) {
 }
 
 // VerifyBackupRestoreData verifies if app ready before backup and after restore to compare data.
-func VerifyBackupRestoreData(artifact_dir string, namespace string, routeName string, app string, prebackupState bool, twoVol bool, backupRestoretype BackupRestoreType) error {
-	log.Printf("Verifying backup/restore data of %s", app)
+func VerifyBackupRestoreData(artifact_dir string, namespace string, routeName string, app string, preBackupState bool, twoVol bool, backupRestoretype BackupRestoreType) error {
+	ginkgo.GinkgoWriter.Printf("Verifying backup/restore data of %s\n", app)
 	appRoute := &routev1.Route{}
 	clientv1, err := client.New(config.GetConfigOrDie(), client.Options{})
 	if err != nil {
@@ -485,9 +483,9 @@ func VerifyBackupRestoreData(artifact_dir string, namespace string, routeName st
 	}
 	appApi := "http://" + appRoute.Spec.Host
 
-	//if this is prebackstate = true, add items via makeRequest function. We only want to make request before backup
+	//if this is preBackupState = true, add items via makeRequest function. We only want to make request before backup
 	//and ignore post restore checks.
-	if prebackupState {
+	if preBackupState {
 		// delete backupFile if it exists
 		if _, err := os.Stat(backupFile); err == nil {
 			os.Remove(backupFile)
@@ -497,12 +495,12 @@ func VerifyBackupRestoreData(artifact_dir string, namespace string, routeName st
 		if err != nil {
 			return err
 		} else {
-			fmt.Printf("Data before the curl request: \n %s\n", dataBeforeCurl)
+			ginkgo.GinkgoWriter.Printf("Data before the curl request:\n    %s\n", dataBeforeCurl)
 		}
 		//make post request to given api
 		switch app {
 		case "todolist":
-			fmt.Printf("PrebackState: %t, so make a curl request\n", prebackupState)
+			ginkgo.GinkgoWriter.Printf("preBackupState is %t, so make a curl request\n", preBackupState)
 			makeRequest("POST", appApi+"/todo", time.Now().String())
 			makeRequest("POST", appApi+"/todo", time.Now().Weekday().String())
 		}
@@ -530,8 +528,8 @@ func VerifyBackupRestoreData(artifact_dir string, namespace string, routeName st
 				return err
 			}
 			os.Remove(backupFile)
-			fmt.Printf("Data came from backup-file\n %s\n", backupData)
-			fmt.Printf("Data from the response after restore\n %s\n", respData)
+			ginkgo.GinkgoWriter.Printf("Data came from backup-file\n    %s\n", backupData)
+			ginkgo.GinkgoWriter.Printf("Data from the response after restore\n    %s\n", respData)
 			backDataIsEqual := false
 			for i := 0; i < 5 && !backDataIsEqual; i++ {
 				respData, err = getResponseData(appApi)
@@ -540,8 +538,8 @@ func VerifyBackupRestoreData(artifact_dir string, namespace string, routeName st
 				}
 				backDataIsEqual = bytes.Equal(backupData, respData)
 				if backDataIsEqual != true {
-					fmt.Printf("Backup and Restore Data are not equal, retry %d\n", i)
-					fmt.Printf("Data from the response after restore\n %s\n", respData)
+					ginkgo.GinkgoWriter.Printf("Backup and Restore Data are not equal, retry %d\n", i)
+					ginkgo.GinkgoWriter.Printf("Data from the response after restore\n    %s\n", respData)
 					time.Sleep(10 * time.Second)
 				}
 			}
@@ -550,7 +548,8 @@ func VerifyBackupRestoreData(artifact_dir string, namespace string, routeName st
 			}
 
 		} else if errors.Is(err, os.ErrNotExist) {
-			fmt.Printf("Writing data to backupFile (backup-data.txt): \n %s\n", respData)
+			// TODO pretty print each element in the list
+			ginkgo.GinkgoWriter.Printf("Writing data to backupFile (backup-data.txt):\n    %s\n", respData)
 			err := os.WriteFile(backupFile, respData, 0644)
 			if err != nil {
 				return err
@@ -560,7 +559,7 @@ func VerifyBackupRestoreData(artifact_dir string, namespace string, routeName st
 
 	if twoVol {
 		volumeFile := artifact_dir + "/volume-data.txt"
-		return verifyVolume(volumeFile, volumeApi, prebackupState, backupRestoretype)
+		return verifyVolume(volumeFile, volumeApi, preBackupState, backupRestoretype)
 	}
 
 	return nil
@@ -624,7 +623,8 @@ func getResponseData(appApi string) ([]byte, error) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 { // # TODO: NEED TO FIND A BETTER WAY TO DEBUG RESPONSE
+	if resp.StatusCode != 200 {
+		// TODO remove logic from here and use eventually function
 		var retrySchedule = []time.Duration{
 			15 * time.Second,
 			1 * time.Minute,
@@ -632,9 +632,12 @@ func getResponseData(appApi string) ([]byte, error) {
 		}
 		for _, backoff := range retrySchedule {
 			resp, err = http.Get(appApi)
+			if err != nil {
+				return nil, err
+			}
+			defer resp.Body.Close()
 			if resp.StatusCode != 200 {
-				log.Printf("Request error: %+v\n", err)
-				log.Printf("Retrying in %v\n", backoff)
+				ginkgo.GinkgoWriter.Printf("Request errored out with Status Code %v, retrying in %v\n", resp.StatusCode, backoff)
 				time.Sleep(backoff)
 			}
 		}

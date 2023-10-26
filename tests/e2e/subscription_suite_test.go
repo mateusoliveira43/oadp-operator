@@ -2,7 +2,6 @@ package e2e_test
 
 import (
 	"context"
-	"log"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -14,8 +13,14 @@ import (
 )
 
 var _ = Describe("Subscription Config Suite Test", func() {
+	type SubscriptionConfigTestCase struct {
+		operators.SubscriptionConfig
+		failureExpected *bool
+		stream          string
+	}
+
 	var _ = BeforeEach(func() {
-		log.Printf("Building dpaSpec")
+		GinkgoWriter.Println("Building dpaSpec")
 		err := dpaCR.Build(CSI)
 		Expect(err).NotTo(HaveOccurred())
 		//also test restic
@@ -26,76 +31,71 @@ var _ = Describe("Subscription Config Suite Test", func() {
 		Expect(err).ToNot(HaveOccurred())
 		Eventually(dpaCR.IsDeleted(), timeoutMultiplier*time.Minute*2, time.Second*5).Should(BeTrue())
 
-		testSuiteInstanceName := "ts-" + instanceName
-		dpaCR.Name = testSuiteInstanceName
+		dpaCR.Name = "ts-" + instanceName
 	})
 
 	var _ = AfterEach(func() {
 		err := dpaCR.Delete()
 		Expect(err).ToNot(HaveOccurred())
 	})
-	type SubscriptionConfigTestCase struct {
-		operators.SubscriptionConfig
-		failureExpected *bool
-		stream          string
-	}
+
 	DescribeTable("Proxy test table",
 		func(testCase SubscriptionConfigTestCase) {
-			log.Printf("Getting Operator Subscription")
+			GinkgoWriter.Println("Getting Operator Subscription")
 			s, err := dpaCR.GetOperatorSubscription(stream)
 			Expect(err).To(BeNil())
-			log.Printf("Setting test case subscription config")
+			GinkgoWriter.Println("Setting test case subscription config")
 			s.Spec.Config = &testCase.SubscriptionConfig
-			log.Printf("Updating Subscription")
+			GinkgoWriter.Println("Updating Subscription")
 			err = dpaCR.Client.Update(context.Background(), s.Subscription)
 			Expect(err).To(BeNil())
 
 			// get csv from installplan from subscription
-			log.Printf("Wait for CSV to be succeeded")
+			GinkgoWriter.Println("Wait for CSV to be succeeded")
 			if testCase.failureExpected != nil && *testCase.failureExpected {
 				Consistently(s.CsvIsReady, time.Minute*2).Should(BeFalse())
 			} else {
 				Eventually(s.CsvIsReady, time.Minute*15).Should(BeTrue())
 
-				log.Printf("CreatingOrUpdate test Velero")
+				GinkgoWriter.Println("CreatingOrUpdate test Velero")
 				err = dpaCR.CreateOrUpdate(&dpaCR.CustomResource.Spec)
 				Expect(err).NotTo(HaveOccurred())
 
-				log.Printf("Getting velero object")
+				GinkgoWriter.Println("Getting velero object")
 				velero, err := dpaCR.Get()
 				Expect(err).NotTo(HaveOccurred())
-				log.Printf("Waiting for velero pod to be running")
+				GinkgoWriter.Println("Waiting for velero pod to be running")
 				Eventually(AreVeleroPodsRunning(namespace), timeoutMultiplier*time.Minute*3, time.Second*5).Should(BeTrue())
 				if velero.Spec.Configuration.NodeAgent.Enable != nil && *velero.Spec.Configuration.NodeAgent.Enable {
-					log.Printf("Waiting for Node Agent pods to be running")
+					GinkgoWriter.Println("Waiting for Node Agent pods to be running")
 					Eventually(AreNodeAgentPodsRunning(namespace), timeoutMultiplier*time.Minute*3, time.Second*5).Should(BeTrue())
 				}
 				if s.Spec.Config != nil && s.Spec.Config.Env != nil {
 					// get pod env vars
-					log.Printf("Getting deployments")
+					GinkgoWriter.Println("Getting deployments")
 					vd, err := GetVeleroDeploymentList(namespace)
 					Expect(err).NotTo(HaveOccurred())
-					log.Printf("Getting daemonsets")
+					GinkgoWriter.Println("Getting daemonsets")
 					rds, err := GetResticDaemonsetList(namespace)
 					Expect(err).NotTo(HaveOccurred())
 					for _, env := range s.Spec.Config.Env {
 						for _, deployment := range vd.Items {
-							log.Printf("Checking env vars are passed to deployment " + deployment.Name)
+							GinkgoWriter.Println("Checking env vars are passed to deployment " + deployment.Name)
 							for _, container := range deployment.Spec.Template.Spec.Containers {
-								log.Printf("Checking env vars are passed to container " + container.Name)
+								GinkgoWriter.Println("Checking env vars are passed to container " + container.Name)
 								Expect(container.Env).To(ContainElement(env))
 							}
 						}
 						for _, daemonset := range rds.Items {
-							log.Printf("Checking env vars are passed to daemonset " + daemonset.Name)
+							GinkgoWriter.Println("Checking env vars are passed to daemonset " + daemonset.Name)
 							for _, container := range daemonset.Spec.Template.Spec.Containers {
-								log.Printf("Checking env vars are passed to container " + container.Name)
+								GinkgoWriter.Println("Checking env vars are passed to container " + container.Name)
 								Expect(container.Env).To(ContainElement(env))
 							}
 						}
 					}
 				}
-				log.Printf("Deleting test Velero")
+				GinkgoWriter.Println("Deleting test Velero")
 				err = dpaCR.Delete()
 				Expect(err).ToNot(HaveOccurred())
 			}
@@ -133,7 +133,7 @@ var _ = Describe("Subscription Config Suite Test", func() {
 			// Failure is expected because localhost is not a valid https proxy and manager container will fail setup
 			failureExpected: pointer.Bool(true),
 		}),
-		// Leave this as last entry to reset config
+		// Leave this as last entry to reset config TODO transform in afterEach
 		Entry("Config unset", SubscriptionConfigTestCase{
 			SubscriptionConfig: operators.SubscriptionConfig{},
 		}),

@@ -262,6 +262,11 @@ func (v *DpaCustomResource) Delete() error {
 }
 
 func (v *DpaCustomResource) SetClient() error {
+	// mateus := config.GetConfigOrDie()
+	// mateus.QPS = 50
+	// mateus.Burst = 100
+	// fmt.Printf("MATEUS %#v\n", mateus)
+	// TODO
 	client, err := client.New(config.GetConfigOrDie(), client.Options{})
 	if err != nil {
 		return err
@@ -314,16 +319,16 @@ func AreVeleroPodsRunning(namespace string) wait.ConditionFunc {
 			return false, err
 		}
 		if podList.Items == nil || len(podList.Items) == 0 {
-			GinkgoWriter.Println(time.Now().String() + ": velero pods not found")
+			GinkgoWriter.Println("velero pods not found")
 			return false, nil
 		}
 		for _, podInfo := range (*podList).Items {
 			if podInfo.Status.Phase != corev1.PodRunning {
-				log.Printf("pod: %s is not yet running with status: %v", podInfo.Name, podInfo.Status)
+				GinkgoWriter.Printf("pod: %s is not yet running: phase is %v\n", podInfo.Name, podInfo.Status.Phase)
 				return false, nil
 			}
 		}
-		GinkgoWriter.Println(time.Now().String() + ": velero pods are running")
+		GinkgoWriter.Println("velero pods are running")
 		return true, nil
 	}
 }
