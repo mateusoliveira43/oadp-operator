@@ -168,19 +168,10 @@ func (r *DPAReconciler) buildVeleroDeployment(veleroDeployment *appsv1.Deploymen
 		return fmt.Errorf("error appending pod annotations: %v", err)
 	}
 
-	// Since `restic` can be still be used and it default's to an empty string, we can't just
-	// pass the dpa.Spec.Configuration.NodeAgent.UploaderType directly
-	uploaderType := ""
-	if dpa.Spec.Configuration.NodeAgent != nil && len(dpa.Spec.Configuration.NodeAgent.UploaderType) > 0 {
-		uploaderType = dpa.Spec.Configuration.NodeAgent.UploaderType
-	}
-
 	installDeployment := install.Deployment(veleroDeployment.Namespace,
 		install.WithResources(veleroResourceReqs),
 		install.WithImage(getVeleroImage(dpa)),
 		install.WithAnnotations(podAnnotations),
-		install.WithFeatures(dpa.Spec.Configuration.Velero.FeatureFlags),
-		install.WithUploaderType(uploaderType),
 		// last label overrides previous ones
 		install.WithLabels(veleroDeployment.Labels),
 		// use WithSecret false even if we have secret because we use a different VolumeMounts and EnvVars
@@ -188,6 +179,7 @@ func (r *DPAReconciler) buildVeleroDeployment(veleroDeployment *appsv1.Deploymen
 		// our secrets are appended to containers/volumeMounts in credentials.AppendPluginSpecificSpecs function
 		install.WithSecret(false),
 		install.WithServiceAccountName(common.Velero),
+		install.WithFeatures(dpa.Spec.Configuration.Velero.FeatureFlags),
 	)
 
 	veleroDeploymentName := veleroDeployment.Name
@@ -367,6 +359,12 @@ func (r *DPAReconciler) customizeVeleroDeployment(dpa *oadpv1alpha1.DataProtecti
 	// check for disable-informer-cache flag
 	disableInformerCache := disableInformerCacheValue(dpa)
 	veleroContainer.Args = append(veleroContainer.Args, fmt.Sprintf("--disable-informer-cache=%s", disableInformerCache))
+
+	// Since `restic` can be still be used and it default's to an empty string, we can't just
+	// pass the dpa.Spec.Configuration.NodeAgent.UploaderType directly
+	if dpa.Spec.Configuration.NodeAgent != nil && len(dpa.Spec.Configuration.NodeAgent.UploaderType) > 0 {
+		veleroContainer.Args = append(veleroContainer.Args, fmt.Sprintf("--uploader-type=%s", dpa.Spec.Configuration.NodeAgent.UploaderType))
+	}
 
 	// Set defaults to avoid update events
 	if veleroDeployment.Spec.Strategy.Type == "" {
